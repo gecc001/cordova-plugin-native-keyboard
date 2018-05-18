@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EddyVerbruggen/cordova-plugin-native-keyboard.git"
+    "url": "git+https://github.com/gecc001/cordova-plugin-native-keyboard.git"
   },
   "keywords": [
     "Keyboard",
