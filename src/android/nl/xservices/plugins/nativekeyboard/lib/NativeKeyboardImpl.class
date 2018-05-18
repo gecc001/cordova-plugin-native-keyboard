@@ -1,0 +1,635 @@
+package nl.xservices.plugins.nativekeyboard.lib;
+
+import android.app.Activity;
+import android.content.res.Resources;
+import android.content.res.Resources.NotFoundException;
+import android.graphics.Color;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Build.VERSION;
+import android.os.Handler;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.Spanned;
+import android.text.TextWatcher;
+import android.util.DisplayMetrics;
+import android.view.Display;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.View.OnLayoutChangeListener;
+import android.view.View.OnTouchListener;
+import android.view.ViewGroup;
+import android.view.ViewGroup.LayoutParams;
+import android.view.ViewTreeObserver;
+import android.view.ViewTreeObserver.OnGlobalLayoutListener;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.Animation.AnimationListener;
+import android.view.animation.TranslateAnimation;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.LinearLayout.LayoutParams;
+import android.widget.RelativeLayout.LayoutParams;
+import android.widget.TextView;
+import android.widget.TextView.OnEditorActionListener;
+import java.lang.reflect.Field;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public class NativeKeyboardImpl
+{
+  private static final int MESSENGER_SLIDE_ANIMATION_MSEC = 500;
+  private LinearLayout _accessorybarContainer;
+  private long appStartTs = System.currentTimeMillis();
+  private TextView leftButton;
+  private EditText editText;
+  private TextView rightButton;
+  private Typeface fontAwesomeFont;
+  private Typeface ioniconsFont;
+  private Activity activity;
+  private View view;
+  private View rootView;
+  private ViewTreeObserver.OnGlobalLayoutListener layoutListener;
+  private float density;
+  private OnNativeKeyboardEventListener _messengerEventListener;
+  
+  public void init(Activity paramActivity, View paramView)
+  {
+    this.activity = paramActivity;
+    this.view = paramView;
+    this.fontAwesomeFont = FontManager.getTypeface(paramActivity.getApplicationContext(), "fonts/fontawesome-webfont.ttf");
+    this.ioniconsFont = FontManager.getTypeface(paramActivity.getApplicationContext(), "fonts/ionicons.ttf");
+    
+    DisplayMetrics localDisplayMetrics = new DisplayMetrics();
+    paramActivity.getWindowManager().getDefaultDisplay().getMetrics(localDisplayMetrics);
+    this.density = localDisplayMetrics.density;
+    
+    this.rootView = paramActivity.getWindow().getDecorView().findViewById(16908290).getRootView();
+    this.layoutListener = new NKOnGlobalLayoutListener(null);
+    this.rootView.getViewTreeObserver().addOnGlobalLayoutListener(this.layoutListener);
+  }
+  
+  private void configureEditText(JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+    throws JSONException
+  {
+    this.editText = new EditText(this.activity);
+    this.editText.setLines(4);
+    this.editText.setSingleLine();
+    this.editText.setMinLines(1);
+    this.editText.setMaxLines(8);
+    this.editText.setHorizontallyScrolling(false);
+    this.editText.setText(paramJSONObject.optString("text"));
+    this.editText.setHint(paramJSONObject.optString("placeholder"));
+    this.editText.setHintTextColor(Color.parseColor(paramJSONObject.optString("placeholderColor", "#CCCCCC")));
+    this.editText.setPadding(20, 0, 20, 20);
+    this.editText.setTextColor(Color.parseColor(paramJSONObject.optString("textColor", "#444444")));
+    this.editText.setGravity(80);
+    this.editText.setBackgroundColor(Color.parseColor(paramJSONObject.optString("textViewBackgroundColor", "#F6F6F6")));
+    final int i;
+    try
+    {
+      Field localField = TextView.class.getDeclaredField("mCursorDrawableRes");
+      localField.setAccessible(true);
+      i = this.activity.getResources().getIdentifier("cursor", "drawable", this.activity.getPackageName());
+      localField.set(this.editText, Integer.valueOf(i));
+    }
+    catch (Exception localException) {}
+    boolean bool1 = paramJSONObject.optBoolean("suppressSuggestions", true);
+    if (bool1) {
+      this.editText.setInputType(671808);
+    } else {
+      this.editText.setInputType(147520);
+    }
+    this.editText.setImeOptions(6);
+    this.editText.setTextSize(2, 16.0F);
+    if (paramJSONObject.has("maxChars"))
+    {
+      i = paramJSONObject.getInt("maxChars");
+      InputFilter local1 = new InputFilter()
+      {
+        public CharSequence filter(CharSequence paramAnonymousCharSequence, int paramAnonymousInt1, int paramAnonymousInt2, Spanned paramAnonymousSpanned, int paramAnonymousInt3, int paramAnonymousInt4)
+        {
+          if (paramAnonymousSpanned.length() > i - 1) {
+            return "";
+          }
+          return null;
+        }
+      };
+      this.editText.setFilters(new InputFilter[] { local1 });
+    }
+    if (this.rightButton != null)
+    {
+      this.editText.addOnLayoutChangeListener(new View.OnLayoutChangeListener()
+      {
+        public void onLayoutChange(View paramAnonymousView, int paramAnonymousInt1, int paramAnonymousInt2, int paramAnonymousInt3, int paramAnonymousInt4, int paramAnonymousInt5, int paramAnonymousInt6, int paramAnonymousInt7, int paramAnonymousInt8)
+        {
+          if (NativeKeyboardImpl.this.editText.getText().toString().length() > 0)
+          {
+            int i = paramAnonymousInt4 - paramAnonymousInt8;
+            int j = (int)(i / NativeKeyboardImpl.this.density);
+            int k = (int)(NativeKeyboardImpl.this.editText.getHeight() / NativeKeyboardImpl.this.density);
+            try
+            {
+              JSONObject localJSONObject = new JSONObject().put("contentHeight", k).put("contentHeightDiff", j);
+              paramOnNativeKeyboardEventListener.onSuccess(localJSONObject);
+            }
+            catch (JSONException localJSONException) {}
+          }
+        }
+      });
+      this.editText.addTextChangedListener(new TextWatcher()
+      {
+        public void beforeTextChanged(CharSequence paramAnonymousCharSequence, int paramAnonymousInt1, int paramAnonymousInt2, int paramAnonymousInt3) {}
+        
+        public void onTextChanged(CharSequence paramAnonymousCharSequence, int paramAnonymousInt1, int paramAnonymousInt2, int paramAnonymousInt3)
+        {
+          NativeKeyboardImpl.this.sendTextChangedEventToListener(paramOnNativeKeyboardEventListener);
+          AlphaAnimation localAlphaAnimation;
+          if (NativeKeyboardImpl.this.editText.getText().toString().length() > 0)
+          {
+            if (NativeKeyboardImpl.this.rightButton.getVisibility() == 4)
+            {
+              NativeKeyboardImpl.this.rightButton.setVisibility(0);
+              localAlphaAnimation = new AlphaAnimation(0.0F, 1.0F);
+              localAlphaAnimation.setDuration(400L);
+              NativeKeyboardImpl.this.rightButton.startAnimation(localAlphaAnimation);
+            }
+          }
+          else if (NativeKeyboardImpl.this.rightButton.getVisibility() == 0)
+          {
+            NativeKeyboardImpl.this.rightButton.setVisibility(4);
+            localAlphaAnimation = new AlphaAnimation(1.0F, 0.0F);
+            localAlphaAnimation.setDuration(300L);
+            NativeKeyboardImpl.this.rightButton.startAnimation(localAlphaAnimation);
+          }
+        }
+        
+        public void afterTextChanged(Editable paramAnonymousEditable) {}
+      });
+    }
+    LinearLayout.LayoutParams localLayoutParams = new LinearLayout.LayoutParams(this.view.getLayoutParams());
+    localLayoutParams.weight = 1.0F;
+    this.editText.setLayoutParams(localLayoutParams);
+    this.editText.getLayoutParams().height = -2;
+    this.editText.setOnEditorActionListener(new TextView.OnEditorActionListener()
+    {
+      public boolean onEditorAction(TextView paramAnonymousTextView, int paramAnonymousInt, KeyEvent paramAnonymousKeyEvent)
+      {
+        if (paramAnonymousInt == 6) {
+          NativeKeyboardImpl.this.sendEnteredTextToListener(false, paramOnNativeKeyboardEventListener);
+        }
+        return false;
+      }
+    });
+    boolean bool2 = paramJSONObject.optBoolean("showKeyboard", false);
+    if (bool2)
+    {
+      Handler localHandler = new Handler();
+      localHandler.postDelayed(new Runnable()
+      {
+        public void run()
+        {
+          NativeKeyboardImpl.this.editText.requestFocus();
+          InputMethodManager localInputMethodManager = (InputMethodManager)NativeKeyboardImpl.this.activity.getSystemService("input_method");
+          localInputMethodManager.showSoftInput(NativeKeyboardImpl.this.editText, 1);
+          NativeKeyboardImpl.this.editText.setSelection(NativeKeyboardImpl.this.editText.getText().length());
+        }
+      }, 400L);
+    }
+  }
+  
+  private void configureCommonButtonProperties(TextView paramTextView, JSONObject paramJSONObject, OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+    throws JSONException
+  {
+    paramTextView.setGravity(17);
+    paramTextView.setTextColor(Color.parseColor(paramJSONObject.optString("color", "#444444")));
+    paramTextView.setPadding(30, 20, 30, 20);
+    
+    String str1 = paramJSONObject.optString("value", "");
+    String str2 = paramJSONObject.optString("type", "text");
+    String str3;
+    if (("fa".equalsIgnoreCase(str2)) || ("fontawesome".equalsIgnoreCase(str2)))
+    {
+      if (this.fontAwesomeFont == null) {
+        paramOnNativeKeyboardEventListener.onError("FontAwesome font not found.");
+      } else {
+        paramTextView.setTypeface(this.fontAwesomeFont);
+      }
+      str3 = str1;
+      if (!str3.startsWith("fa-")) {
+        str3 = "fa-" + str1;
+      }
+      str3 = str3.replace('-', '_');
+      int i = this.activity.getResources().getIdentifier(str3, "string", this.activity.getPackageName());
+      try
+      {
+        paramTextView.setText(this.activity.getResources().getString(i));
+      }
+      catch (Resources.NotFoundException localNotFoundException)
+      {
+        paramOnNativeKeyboardEventListener.onError("Could not find fontawesome resource " + str3 + ", you're probably trying to use a relatively new fa icon. Using fa-paper-plane-o as fallback.");
+        i = this.activity.getResources().getIdentifier("fa_paper_plane_o", "string", this.activity.getPackageName());
+        paramTextView.setText(this.activity.getResources().getString(i));
+      }
+      paramTextView.setTextSize(2, 22.0F);
+    }
+    else if (("ion".equalsIgnoreCase(str2)) || ("ionicon".equalsIgnoreCase(str2)))
+    {
+      if (this.ioniconsFont == null) {
+        paramOnNativeKeyboardEventListener.onError("Ionicons font not found.");
+      } else {
+        paramTextView.setTypeface(this.ioniconsFont);
+      }
+      paramTextView.setText(str1);
+      paramTextView.setTextSize(2, 22.0F);
+    }
+    else
+    {
+      paramTextView.setText(str1);
+      str3 = paramJSONObject.optString("textStyle", "normal");
+      if ("bold".equals(str3)) {
+        paramTextView.setTypeface(null, 1);
+      } else if ("italic".equals(str3)) {
+        paramTextView.setTypeface(null, 2);
+      }
+      paramTextView.setTextSize(2, 16.0F);
+    }
+  }
+  
+  private void configureLeftButton(JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+    throws JSONException
+  {
+    if (!paramJSONObject.has("leftButton")) {
+      return;
+    }
+    JSONObject localJSONObject = paramJSONObject.getJSONObject("leftButton");
+    
+    this.leftButton = new TextView(this.activity);
+    configureCommonButtonProperties(this.leftButton, localJSONObject, paramOnNativeKeyboardEventListener);
+    
+    this.leftButton.setLayoutParams(new ViewGroup.LayoutParams(-2, -1));
+    
+    final boolean bool = localJSONObject.optBoolean("disabledWhenTextEntered", false);
+    this.leftButton.setOnTouchListener(new View.OnTouchListener()
+    {
+      public boolean onTouch(View paramAnonymousView, MotionEvent paramAnonymousMotionEvent)
+      {
+        try
+        {
+          if ((!bool) || (NativeKeyboardImpl.this.editText.length() == 0))
+          {
+            JSONObject localJSONObject = new JSONObject().put("messengerLeftButtonPressed", true);
+            paramOnNativeKeyboardEventListener.onSuccess(localJSONObject);
+          }
+        }
+        catch (JSONException localJSONException)
+        {
+          paramOnNativeKeyboardEventListener.onError(localJSONException.getMessage());
+        }
+        return false;
+      }
+    });
+  }
+  
+  private void configureRightButton(final JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+    throws JSONException
+  {
+    if (!paramJSONObject.has("rightButton")) {
+      return;
+    }
+    JSONObject localJSONObject = paramJSONObject.getJSONObject("rightButton");
+    this.rightButton = new TextView(this.activity);
+    configureCommonButtonProperties(this.rightButton, localJSONObject, paramOnNativeKeyboardEventListener);
+    if (!paramJSONObject.has("text")) {
+      this.rightButton.setVisibility(4);
+    }
+    this.rightButton.setOnTouchListener(new View.OnTouchListener()
+    {
+      public boolean onTouch(View paramAnonymousView, MotionEvent paramAnonymousMotionEvent)
+      {
+        NativeKeyboardImpl.this.sendEnteredTextToListener(true, paramOnNativeKeyboardEventListener);
+        if (!paramJSONObject.optBoolean("keepOpenAfterSubmit", false))
+        {
+          if (NativeKeyboardImpl.this.activity.getCurrentFocus() != null)
+          {
+            InputMethodManager localInputMethodManager = (InputMethodManager)NativeKeyboardImpl.this.activity.getSystemService("input_method");
+            localInputMethodManager.hideSoftInputFromWindow(NativeKeyboardImpl.this.activity.getCurrentFocus().getWindowToken(), 2);
+          }
+          NativeKeyboardImpl.this.view.requestFocus();
+        }
+        return true;
+      }
+    });
+  }
+  
+  public void showMessengerKeyboard(final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    if (this._accessorybarContainer == null)
+    {
+      paramOnNativeKeyboardEventListener.onError("Call 'showMessenger' first. You can use this method to give focus back to the messenger once its lost.");
+      return;
+    }
+    this.activity.runOnUiThread(new Runnable()
+    {
+      public void run()
+      {
+        if (NativeKeyboardImpl.this.editText != null)
+        {
+          NativeKeyboardImpl.this.editText.requestFocus();
+          InputMethodManager localInputMethodManager = (InputMethodManager)NativeKeyboardImpl.this.activity.getSystemService("input_method");
+          localInputMethodManager.showSoftInput(NativeKeyboardImpl.this.editText, 1);
+          NativeKeyboardImpl.this.editText.setSelection(NativeKeyboardImpl.this.editText.getText().length());
+          paramOnNativeKeyboardEventListener.onSuccess(null);
+        }
+      }
+    });
+  }
+  
+  public void hideMessengerKeyboard(final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    if (this._accessorybarContainer == null)
+    {
+      paramOnNativeKeyboardEventListener.onError("Keyboard wasn't showing.");
+      return;
+    }
+    this.activity.runOnUiThread(new Runnable()
+    {
+      public void run()
+      {
+        NativeKeyboardImpl.this.hideKeyboard();
+        paramOnNativeKeyboardEventListener.onSuccess(null);
+      }
+    });
+  }
+  
+  public void showMessenger(final JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    if (this._accessorybarContainer != null)
+    {
+      paramOnNativeKeyboardEventListener.onError("Already showing");
+      return;
+    }
+    this.activity.runOnUiThread(new Runnable()
+    {
+      public void run()
+      {
+        try
+        {
+          NativeKeyboardImpl.this.configureLeftButton(paramJSONObject, paramOnNativeKeyboardEventListener);
+          NativeKeyboardImpl.this.configureRightButton(paramJSONObject, paramOnNativeKeyboardEventListener);
+          NativeKeyboardImpl.this.configureEditText(paramJSONObject, paramOnNativeKeyboardEventListener);
+          
+          LinearLayout localLinearLayout1 = new LinearLayout(NativeKeyboardImpl.this.activity);
+          RelativeLayout.LayoutParams localLayoutParams = new RelativeLayout.LayoutParams(NativeKeyboardImpl.this.view.getLayoutParams());
+          localLayoutParams.addRule(12);
+          
+          localLinearLayout1.setGravity(80);
+          localLinearLayout1.setLayoutParams(localLayoutParams);
+          localLinearLayout1.setOrientation(0);
+          
+          LinearLayout localLinearLayout2 = new LinearLayout(NativeKeyboardImpl.this.activity);
+          localLinearLayout2.setLayoutParams(new ViewGroup.LayoutParams(-1, -2));
+          
+          localLinearLayout2.setPadding(4, 20, 4, 28);
+          localLinearLayout2.setGravity(80);
+          
+          addBackgroundColorAndBorder(localLinearLayout2);
+          if (NativeKeyboardImpl.this.leftButton != null) {
+            localLinearLayout2.addView(NativeKeyboardImpl.this.leftButton);
+          }
+          localLinearLayout2.addView(NativeKeyboardImpl.this.editText);
+          if (NativeKeyboardImpl.this.rightButton != null) {
+            localLinearLayout2.addView(NativeKeyboardImpl.this.rightButton);
+          }
+          localLinearLayout1.addView(localLinearLayout2);
+          
+          NativeKeyboardImpl.this._messengerEventListener = paramOnNativeKeyboardEventListener;
+          if (paramJSONObject.optBoolean("animated", false))
+          {
+            localObject = new TranslateAnimation(2, 0.0F, 2, 0.0F, 0, 160.0F, 0, 0.0F);
+            
+            ((Animation)localObject).setDuration(500L);
+            localLinearLayout1.clearAnimation();
+            localLinearLayout1.setAnimation((Animation)localObject);
+            localLinearLayout1.startLayoutAnimation();
+          }
+          Object localObject = (ViewGroup)NativeKeyboardImpl.this.view.getParent();
+          if (((ViewGroup)localObject).getChildCount() == 2)
+          {
+            ViewGroup localViewGroup = (ViewGroup)((ViewGroup)localObject).getParent();
+            if (localViewGroup.getChildCount() == 1) {
+              localObject = localViewGroup;
+            }
+          }
+          ((ViewGroup)localObject).addView(localLinearLayout1);
+          NativeKeyboardImpl.this._accessorybarContainer = localLinearLayout1;
+          
+          paramOnNativeKeyboardEventListener.onSuccess(new JSONObject().put("ready", true));
+        }
+        catch (JSONException localJSONException)
+        {
+          paramOnNativeKeyboardEventListener.onError(localJSONException.getMessage());
+        }
+      }
+      
+      private void addBackgroundColorAndBorder(LinearLayout paramAnonymousLinearLayout)
+      {
+        if (Build.VERSION.SDK_INT >= 16)
+        {
+          GradientDrawable localGradientDrawable = new GradientDrawable();
+          localGradientDrawable.setShape(0);
+          int i = Color.parseColor(paramJSONObject.optString("backgroundColor", "#F6F6F6"));
+          localGradientDrawable.setColors(new int[] { i, i });
+          localGradientDrawable.setStroke(3, -3355444);
+          paramAnonymousLinearLayout.setBackground(localGradientDrawable);
+        }
+      }
+    });
+  }
+  
+  public void updateMessenger(final JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    if (this._accessorybarContainer == null)
+    {
+      paramOnNativeKeyboardEventListener.onError("Call 'showMessenger' first.");
+      return;
+    }
+    this.activity.runOnUiThread(new Runnable()
+    {
+      public void run()
+      {
+        if (paramJSONObject.has("text")) {
+          NativeKeyboardImpl.this.editText.setText(paramJSONObject.optString("text"));
+        }
+        if (paramJSONObject.optBoolean("showKeyboard", false))
+        {
+          NativeKeyboardImpl.this.editText.requestFocus();
+          InputMethodManager localInputMethodManager = (InputMethodManager)NativeKeyboardImpl.this.activity.getSystemService("input_method");
+          localInputMethodManager.showSoftInput(NativeKeyboardImpl.this.editText, 1);
+        }
+        int i = paramJSONObject.optInt("caretIndex", -1);
+        if ((i >= 0) && (i <= NativeKeyboardImpl.this.editText.getText().length())) {
+          NativeKeyboardImpl.this.editText.setSelection(i);
+        }
+        paramOnNativeKeyboardEventListener.onSuccess(null);
+      }
+    });
+  }
+  
+  public void hideMessenger(final JSONObject paramJSONObject, final OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    if (this._accessorybarContainer == null)
+    {
+      paramOnNativeKeyboardEventListener.onError("Already hidden");
+      return;
+    }
+    this.activity.runOnUiThread(new Runnable()
+    {
+      public void run()
+      {
+        if (paramJSONObject.optBoolean("animated", false))
+        {
+          TranslateAnimation localTranslateAnimation = new TranslateAnimation(2, 0.0F, 2, 0.0F, 0, 0.0F, 0, 160.0F);
+          
+          localTranslateAnimation.setDuration(500L);
+          localTranslateAnimation.setAnimationListener(new Animation.AnimationListener()
+          {
+            public void onAnimationStart(Animation paramAnonymous2Animation) {}
+            
+            public void onAnimationEnd(Animation paramAnonymous2Animation)
+            {
+              NativeKeyboardImpl.this.cleanup();
+            }
+            
+            public void onAnimationRepeat(Animation paramAnonymous2Animation) {}
+          });
+          NativeKeyboardImpl.this._accessorybarContainer.clearAnimation();
+          NativeKeyboardImpl.this._accessorybarContainer.setAnimation(localTranslateAnimation);
+          NativeKeyboardImpl.this._accessorybarContainer.startLayoutAnimation();
+        }
+        else
+        {
+          NativeKeyboardImpl.this.cleanup();
+        }
+        paramOnNativeKeyboardEventListener.onSuccess(null);
+      }
+    });
+  }
+  
+  private void cleanup()
+  {
+    ((ViewGroup)this._accessorybarContainer.getParent()).removeView(this._accessorybarContainer);
+    this._accessorybarContainer = null;
+    this.editText = null;
+    this.leftButton = null;
+    this.rightButton = null;
+    
+    hideKeyboard();
+  }
+  
+  private void hideKeyboard()
+  {
+    if (this.activity.getCurrentFocus() != null)
+    {
+      InputMethodManager localInputMethodManager = (InputMethodManager)this.activity.getSystemService("input_method");
+      localInputMethodManager.hideSoftInputFromWindow(this.activity.getCurrentFocus().getWindowToken(), 2);
+    }
+  }
+  
+  private void sendTextChangedEventToListener(OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    try
+    {
+      JSONObject localJSONObject = new JSONObject().put("textChanged", this.editText.getText().toString());
+      
+      paramOnNativeKeyboardEventListener.onSuccess(localJSONObject);
+    }
+    catch (JSONException localJSONException)
+    {
+      paramOnNativeKeyboardEventListener.onError(localJSONException.getMessage());
+    }
+  }
+  
+  private void sendEnteredTextToListener(boolean paramBoolean, OnNativeKeyboardEventListener paramOnNativeKeyboardEventListener)
+  {
+    String str = this.editText.getText().toString();
+    if (!"".equals(str)) {
+      try
+      {
+        JSONObject localJSONObject = new JSONObject().put("messengerRightButtonPressed", paramBoolean).put("text", str);
+        
+        paramOnNativeKeyboardEventListener.onSuccess(localJSONObject);
+        this.editText.getText().clear();
+      }
+      catch (JSONException localJSONException)
+      {
+        paramOnNativeKeyboardEventListener.onError(localJSONException.getMessage());
+      }
+    }
+  }
+  
+  private class NKOnGlobalLayoutListener
+    implements ViewTreeObserver.OnGlobalLayoutListener
+  {
+    int previousHeightDiff = 0;
+    
+    private NKOnGlobalLayoutListener() {}
+    
+    public void onGlobalLayout()
+    {
+      if ((NativeKeyboardImpl.this._messengerEventListener == null) || (NativeKeyboardImpl.this._accessorybarContainer == null)) {
+        return;
+      }
+      Rect localRect = new Rect();
+      
+      NativeKeyboardImpl.this.rootView.getWindowVisibleDisplayFrame(localRect);
+      
+      int i = NativeKeyboardImpl.this.rootView.getRootView().getHeight();
+      int j = localRect.bottom;
+      int k;
+      if (Build.VERSION.SDK_INT >= 21)
+      {
+        Display localDisplay = NativeKeyboardImpl.this.activity.getWindowManager().getDefaultDisplay();
+        Point localPoint = new Point();
+        localDisplay.getSize(localPoint);
+        k = localPoint.y;
+      }
+      else
+      {
+        k = i;
+      }
+      int m = k - j;
+      
+      int n = (int)(m / NativeKeyboardImpl.this.density);
+      if ((n > 100) && (n != this.previousHeightDiff))
+      {
+        int i1 = NativeKeyboardImpl.this._accessorybarContainer.getChildAt(0).getHeight();
+        int i2 = (int)(i1 / NativeKeyboardImpl.this.density);
+        try
+        {
+          JSONObject localJSONObject2 = new JSONObject().put("keyboardDidShow", true).put("keyboardHeight", n + i2);
+          NativeKeyboardImpl.this._messengerEventListener.onSuccess(localJSONObject2);
+        }
+        catch (JSONException localJSONException2) {}
+      }
+      else if ((n != this.previousHeightDiff) && (this.previousHeightDiff - n > 100))
+      {
+        try
+        {
+          JSONObject localJSONObject1 = new JSONObject().put("keyboardDidHide", true);
+          NativeKeyboardImpl.this._messengerEventListener.onSuccess(localJSONObject1);
+        }
+        catch (JSONException localJSONException1) {}
+      }
+      this.previousHeightDiff = n;
+    }
+  }
+}

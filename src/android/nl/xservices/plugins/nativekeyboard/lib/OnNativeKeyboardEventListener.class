@@ -1,0 +1,10 @@
+package nl.xservices.plugins.nativekeyboard.lib;
+
+import org.json.JSONObject;
+
+public abstract interface OnNativeKeyboardEventListener
+{
+  public abstract void onSuccess(JSONObject paramJSONObject);
+  
+  public abstract void onError(String paramString);
+}
