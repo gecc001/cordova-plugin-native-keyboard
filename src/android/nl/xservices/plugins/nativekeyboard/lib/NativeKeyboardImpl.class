@@ -48,6 +48,7 @@ public class NativeKeyboardImpl
 {
   private static final int MESSENGER_SLIDE_ANIMATION_MSEC = 500;
   private LinearLayout _accessorybarContainer;
+  private Boolean licenseIsValid;
   private long appStartTs = System.currentTimeMillis();
   private TextView leftButton;
   private EditText editText;
@@ -106,7 +107,7 @@ public class NativeKeyboardImpl
     if (bool1) {
       this.editText.setInputType(671808);
     } else {
-      this.editText.setInputType(147520);
+      this.editText.setInputType(147521);
     }
     this.editText.setImeOptions(6);
     this.editText.setTextSize(2, 16.0F);
